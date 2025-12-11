@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative 'span_delta_codec'
+
 module Prometheus
   module Client
     module DataStores
@@ -18,13 +20,6 @@ module Prometheus
         #
         # @see https://prometheus.io/docs/specs/native_histograms/
         class SparseBucketStore
-          # Represents a contiguous range of populated buckets
-          Span = Struct.new(:offset, :length, keyword_init: true) do
-            def to_h
-              { offset: offset, length: length }
-            end
-          end
-
           attr_reader :schema, :zero_threshold, :max_buckets
 
           # @param file_path [String] Path to storage file

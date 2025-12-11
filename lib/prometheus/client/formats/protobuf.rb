@@ -38,16 +38,12 @@ module Prometheus
 
           def build_metric_family(metric)
             case metric.type
-            when :counter
-              build_counter_family(metric)
-            when :gauge
-              build_gauge_family(metric)
-            when :histogram
-              build_classic_histogram_family(metric)
-            when :summary
-              build_summary_family(metric)
-            when :native_histogram
-              build_native_histogram_family(metric)
+            in :counter then build_counter_family(metric)
+            in :gauge then build_gauge_family(metric)
+            in :histogram then build_classic_histogram_family(metric)
+            in :summary then build_summary_family(metric)
+            in :native_histogram then build_native_histogram_family(metric)
+            else nil
             end
           end
 
@@ -186,17 +182,11 @@ module Prometheus
             return [] if spans.nil? || spans.empty?
 
             spans.map do |span|
-              if span.is_a?(Hash)
-                offset = span[:offset]
-                length = span[:length]
-              else
-                offset = span.offset
-                length = span.length
-              end
-              Io::Prometheus::Client::BucketSpan.new(
-                offset: offset.to_i,
-                length: length.to_i
-              )
+              offset, length = case span
+                               in { offset:, length: } then [offset, length]
+                               else [span.offset, span.length]
+                               end
+              Io::Prometheus::Client::BucketSpan.new(offset: offset.to_i, length: length.to_i)
             end
           end
 

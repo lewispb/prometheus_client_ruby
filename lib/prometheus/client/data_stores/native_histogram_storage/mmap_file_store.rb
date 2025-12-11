@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative 'bucket_calculator'
+require_relative 'span_delta_codec'
 
 module Prometheus
   module Client
@@ -389,9 +390,8 @@ module Prometheus
             pos_buckets = read_buckets(:positive)
             neg_buckets = read_buckets(:negative)
 
-            # Compute spans and deltas together (single sort per bucket set)
-            pos_spans, pos_deltas = compute_spans_and_deltas(pos_buckets)
-            neg_spans, neg_deltas = compute_spans_and_deltas(neg_buckets)
+            pos_spans, pos_deltas = SpanDeltaCodec.encode(pos_buckets)
+            neg_spans, neg_deltas = SpanDeltaCodec.encode(neg_buckets)
 
             {
               sample_count: read_u64(20),
@@ -414,14 +414,14 @@ module Prometheus
             write_u64(36, read_u64(36) + other_data[:zero_count])
 
             # Expand and merge positive buckets
-            other_positive = expand_spans_deltas(
+            other_positive = SpanDeltaCodec.decode(
               other_data[:positive_spans],
               other_data[:positive_deltas]
             )
             merge_buckets(:positive, other_positive)
 
             # Expand and merge negative buckets
-            other_negative = expand_spans_deltas(
+            other_negative = SpanDeltaCodec.decode(
               other_data[:negative_spans],
               other_data[:negative_deltas]
             )
@@ -463,76 +463,6 @@ module Prometheus
             end
 
             write_buckets(side, new_buckets)
-          end
-
-          # Compute spans and deltas together from bucket map.
-          # Combines both operations to avoid sorting twice.
-          # Returns [spans, deltas].
-          def compute_spans_and_deltas(buckets)
-            return [[], []] if buckets.empty?
-
-            sorted_indices = buckets.keys.sort
-            spans = []
-            deltas = []
-            prev_count = 0
-            current_bucket_end = 0  # Track where last span ended for O(1) offset calc
-            i = 0
-
-            while i < sorted_indices.length
-              start_index = sorted_indices[i]
-              length = 1
-
-              # Find consecutive bucket indices
-              while i + length < sorted_indices.length &&
-                    sorted_indices[i + length] == start_index + length
-                length += 1
-              end
-
-              # O(1) offset calculation instead of O(n) sum
-              offset = start_index - current_bucket_end
-              spans << { offset: offset, length: length }
-              current_bucket_end = start_index + length
-
-              # Compute deltas for this span
-              length.times do |j|
-                count = buckets[sorted_indices[i + j]]
-                deltas << (count - prev_count)
-                prev_count = count
-              end
-
-              i += length
-            end
-
-            [spans, deltas]
-          end
-
-          # Expand spans and deltas back to index => count map.
-          def expand_spans_deltas(spans, deltas)
-            return {} if spans.nil? || spans.empty? || deltas.nil? || deltas.empty?
-
-            counts = {}
-            delta_idx = 0
-            current_bucket_idx = 0
-            prev_count = 0
-
-            spans.each do |span|
-              span_offset = span.is_a?(Hash) ? span[:offset] : span.offset
-              span_length = span.is_a?(Hash) ? span[:length] : span.length
-
-              current_bucket_idx += span_offset
-
-              span_length.times do
-                break if delta_idx >= deltas.length
-
-                count = prev_count + deltas[delta_idx]
-                counts[current_bucket_idx] = count
-                prev_count = count
-                delta_idx += 1
-                current_bucket_idx += 1
-              end
-            end
-
-            counts
           end
 
           # IO::Buffer read/write helpers

@@ -42,13 +42,12 @@ describe Prometheus::Middleware::Exporter do
 
     shared_examples 'not acceptable' do |headers|
       it 'responds with 406 Not Acceptable' do
-        message = 'Supported media types: text/plain'
-
         get '/metrics', nil, headers
 
         expect(last_response.status).to eql(406)
         expect(last_response.headers['content-type']).to eql('text/plain')
-        expect(last_response.body).to eql(message)
+        expect(last_response.body).to include('Supported media types:')
+        expect(last_response.body).to include('text/plain')
       end
     end
 

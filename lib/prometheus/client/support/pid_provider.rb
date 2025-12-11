@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require 'prometheus/client'
+
 module Prometheus
   module Client
     module Support

@@ -106,8 +106,13 @@ module Prometheus
           def self.merge_index(old_index)
             # When schema decreases by 1, every two buckets merge into one
             # Positive indices: 1,2 -> 1, 3,4 -> 2, etc.
-            # Use ceiling division to handle both positive and negative indices
-            old_index.positive? ? ((old_index + 1) / 2) : ((old_index - 1) / 2)
+            # Negative indices: -1,-2 -> -1, -3,-4 -> -2, etc.
+            # Zero maps to zero (boundary between positive and negative)
+            case old_index
+            when 0 then 0
+            when (1..) then (old_index + 1) / 2
+            else (old_index - 1) / 2
+            end
           end
         end
       end

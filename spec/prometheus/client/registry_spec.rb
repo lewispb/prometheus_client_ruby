@@ -1,9 +1,14 @@
 # encoding: UTF-8
 
 require 'thread'
-require 'prometheus/client/registry'
+require 'prometheus/client'
 
 describe Prometheus::Client::Registry do
+  before do
+    # Reset to default synchronized store for registry tests
+    Prometheus::Client.config.data_store = Prometheus::Client::DataStores::Synchronized.new
+  end
+
   let(:registry) { Prometheus::Client::Registry.new }
 
   describe '.new' do

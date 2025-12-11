@@ -1,9 +1,13 @@
 # encoding: UTF-8
 
-require 'prometheus/client/gauge'
+require 'prometheus/client'
 require 'prometheus/client/push'
 
 describe Prometheus::Client::Push do
+  before do
+    Prometheus::Client.config.data_store = Prometheus::Client::DataStores::Synchronized.new
+  end
+
   let(:gateway) { 'http://localhost:9091' }
   let(:registry) { Prometheus::Client::Registry.new }
   let(:grouping_key) { {} }

@@ -30,17 +30,26 @@ shared_examples_for Prometheus::Client::Metric do
       end.to raise_exception ArgumentError
     end
 
-    it 'raises an exception if a metric name is invalid' do
+    it 'raises an exception if a metric name is not a symbol' do
+      expect do
+        described_class.new('string', docstring: 'foo')
+      end.to raise_exception(ArgumentError, /must be a symbol/)
+    end
+
+    it 'raises an exception if a metric name starts with __' do
+      expect do
+        described_class.new(:__internal, docstring: 'foo')
+      end.to raise_exception(ArgumentError, /must not start with __/)
+    end
+
+    it 'allows UTF-8 metric names (Prometheus 2.40+)' do
+      # These are now valid with UTF-8 support
       [
-        'string',
-        '42startsWithNumber'.to_sym,
-        'abc def'.to_sym,
-        'abcdef '.to_sym,
-        "abc\ndef".to_sym,
+        :'42startsWithNumber',
+        :'abc def',
+        :'日本語メトリック',
       ].each do |name|
-        expect do
-          described_class.new(name, docstring: 'foo')
-        end.to raise_exception(ArgumentError)
+        expect { described_class.new(name, docstring: 'foo') }.not_to raise_exception
       end
     end
   end

@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'prometheus/client/support/label_encoder'
+require 'prometheus/client/data_stores/native_histogram_storage/span_delta_codec'
 
 module Prometheus
   module Client
@@ -405,8 +406,8 @@ module Prometheus
             negative_offset = NativeHistogramStorage::MmapFileStore::HEADER_SIZE + (capacity * NativeHistogramStorage::MmapFileStore::BUCKET_SIZE)
             negative_buckets = read_buckets_from_mmap(mmap, negative_offset, negative_bucket_count)
 
-            pos_spans, pos_deltas = compute_spans_and_deltas(positive_buckets)
-            neg_spans, neg_deltas = compute_spans_and_deltas(negative_buckets)
+            pos_spans, pos_deltas = NativeHistogramStorage::SpanDeltaCodec.encode(positive_buckets)
+            neg_spans, neg_deltas = NativeHistogramStorage::SpanDeltaCodec.encode(negative_buckets)
 
             {
               sample_count: count,
@@ -447,16 +448,18 @@ module Prometheus
           end
 
           def merge_proto_data(a, b)
-            a_positive = expand_spans_deltas(a[:positive_spans], a[:positive_deltas])
-            a_negative = expand_spans_deltas(a[:negative_spans], a[:negative_deltas])
-            b_positive = expand_spans_deltas(b[:positive_spans], b[:positive_deltas])
-            b_negative = expand_spans_deltas(b[:negative_spans], b[:negative_deltas])
+            codec = NativeHistogramStorage::SpanDeltaCodec
 
-            merged_positive = merge_bucket_hashes(a_positive, b_positive)
-            merged_negative = merge_bucket_hashes(a_negative, b_negative)
+            a_positive = codec.decode(a[:positive_spans], a[:positive_deltas])
+            a_negative = codec.decode(a[:negative_spans], a[:negative_deltas])
+            b_positive = codec.decode(b[:positive_spans], b[:positive_deltas])
+            b_negative = codec.decode(b[:negative_spans], b[:negative_deltas])
 
-            pos_spans, pos_deltas = compute_spans_and_deltas(merged_positive)
-            neg_spans, neg_deltas = compute_spans_and_deltas(merged_negative)
+            merged_positive = a_positive.merge(b_positive) { |_, v1, v2| v1 + v2 }
+            merged_negative = a_negative.merge(b_negative) { |_, v1, v2| v1 + v2 }
+
+            pos_spans, pos_deltas = codec.encode(merged_positive)
+            neg_spans, neg_deltas = codec.encode(merged_negative)
 
             {
               sample_count: a[:sample_count] + b[:sample_count],
@@ -469,78 +472,6 @@ module Prometheus
               negative_spans: neg_spans,
               negative_deltas: neg_deltas
             }
-          end
-
-          def merge_bucket_hashes(a, b)
-            result = a.dup
-            b.each do |index, count|
-              result[index] ||= 0
-              result[index] += count
-            end
-            result
-          end
-
-          def expand_spans_deltas(spans, deltas)
-            return {} if spans.nil? || spans.empty? || deltas.nil? || deltas.empty?
-
-            counts = {}
-            delta_idx = 0
-            current_bucket_idx = 0
-            prev_count = 0
-
-            spans.each do |span|
-              span_offset = span.is_a?(Hash) ? span[:offset] : span.offset
-              span_length = span.is_a?(Hash) ? span[:length] : span.length
-
-              current_bucket_idx += span_offset
-
-              span_length.times do
-                break if delta_idx >= deltas.length
-
-                count = prev_count + deltas[delta_idx]
-                counts[current_bucket_idx] = count
-                prev_count = count
-                delta_idx += 1
-                current_bucket_idx += 1
-              end
-            end
-
-            counts
-          end
-
-          def compute_spans_and_deltas(buckets)
-            return [[], []] if buckets.empty?
-
-            sorted_indices = buckets.keys.sort
-            spans = []
-            deltas = []
-            prev_count = 0
-            current_bucket_end = 0
-            i = 0
-
-            while i < sorted_indices.length
-              start_index = sorted_indices[i]
-              length = 1
-
-              while i + length < sorted_indices.length &&
-                    sorted_indices[i + length] == start_index + length
-                length += 1
-              end
-
-              offset = start_index - current_bucket_end
-              spans << { offset: offset, length: length }
-              current_bucket_end = start_index + length
-
-              length.times do |j|
-                count = buckets[sorted_indices[i + j]]
-                deltas << (count - prev_count)
-                prev_count = count
-              end
-
-              i += length
-            end
-
-            [spans, deltas]
           end
 
           def empty_proto_data
