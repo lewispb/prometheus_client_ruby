@@ -11,10 +11,26 @@ module Prometheus
     # By default it will export the state of the global registry and expose it
     # under `/metrics`. Use the `:registry` and `:path` options to change the
     # defaults.
+    #
+    # Supports content negotiation between text and protobuf formats.
+    # Native histograms require protobuf format (PrometheusProto scrape protocol).
     class Exporter
       attr_reader :app, :registry, :path
 
-      FORMATS  = [Client::Formats::Text].freeze
+      # Load protobuf format lazily to avoid dependency issues
+      def self.formats
+        @formats ||= begin
+          formats = [Client::Formats::Text]
+          begin
+            require 'prometheus/client/formats/protobuf'
+            formats.unshift(Client::Formats::Protobuf)
+          rescue LoadError
+            # Protobuf not available
+          end
+          formats.freeze
+        end
+      end
+
       FALLBACK = Client::Formats::Text
 
       def initialize(app, options = {})
@@ -22,13 +38,13 @@ module Prometheus
         @registry = options[:registry] || Client.registry
         @path = options[:path] || '/metrics'
         @port = options[:port]
-        @acceptable = build_dictionary(FORMATS, FALLBACK)
+        @acceptable = build_dictionary(self.class.formats, FALLBACK)
       end
 
       def call(env)
         if metrics_port?(env['SERVER_PORT']) && env['PATH_INFO'] == @path
           format = negotiate(env, @acceptable)
-          format ? respond_with(format) : not_acceptable(FORMATS)
+          format ? respond_with(format) : not_acceptable
         else
           @app.call(env)
         end
@@ -38,7 +54,12 @@ module Prometheus
 
       def negotiate(env, formats)
         parse(env.fetch('HTTP_ACCEPT', '*/*')).each do |content_type, _|
+          # Try exact match first
           return formats[content_type] if formats.key?(content_type)
+
+          # Fall back to matching just the media type (without parameters)
+          media_type = content_type.split(';').first.strip
+          return formats[media_type] if formats.key?(media_type)
         end
 
         nil
@@ -71,8 +92,8 @@ module Prometheus
         ]
       end
 
-      def not_acceptable(formats)
-        types = formats.map { |format| format::MEDIA_TYPE }
+      def not_acceptable
+        types = self.class.formats.map { |format| format::MEDIA_TYPE }
 
         [
           406,

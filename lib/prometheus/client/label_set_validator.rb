@@ -4,9 +4,19 @@ module Prometheus
   module Client
     # LabelSetValidator ensures that all used label sets comply with the
     # Prometheus specification.
+    #
+    # Supports both legacy label names (ASCII alphanumeric + underscore) and
+    # UTF-8 label names (Prometheus 2.40+).
     class LabelSetValidator
       BASE_RESERVED_LABELS = [:pid].freeze
-      LABEL_NAME_REGEX = /\A[a-zA-Z_][a-zA-Z0-9_]*\Z/
+
+      # Legacy label name pattern (pre-2.40): ASCII letters, digits, underscore
+      LEGACY_LABEL_NAME_REGEX = /\A[a-zA-Z_][a-zA-Z0-9_]*\Z/
+
+      # UTF-8 label name pattern (2.40+): Any valid UTF-8 string that doesn't
+      # start with __ (reserved for internal use)
+      # Note: Empty strings and strings with only whitespace are not allowed
+      UTF8_LABEL_NAME_REGEX = /\A(?!__).+\Z/m
 
       class LabelSetError < StandardError; end
       class InvalidLabelSetError < LabelSetError; end
@@ -59,12 +69,19 @@ module Prometheus
       end
 
       def validate_name(key)
-        if key.to_s.start_with?('__')
+        key_str = key.to_s
+
+        if key_str.start_with?('__')
           raise ReservedLabelError, "label #{key} must not start with __"
         end
 
-        unless key.to_s =~ LABEL_NAME_REGEX
-          raise InvalidLabelError, "label name must match /#{LABEL_NAME_REGEX}/"
+        if key_str.empty? || key_str.strip.empty?
+          raise InvalidLabelError, "label name cannot be empty or whitespace-only"
+        end
+
+        # Ensure valid UTF-8 encoding
+        unless key_str.valid_encoding?
+          raise InvalidLabelError, "label name must be valid UTF-8"
         end
 
         true

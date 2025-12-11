@@ -12,10 +12,11 @@ Gem::Specification.new do |s|
   s.homepage          = 'https://github.com/prometheus/client_ruby'
   s.license           = 'Apache-2.0'
 
-  s.files             = %w(README.md LICENSE) + Dir.glob('{lib/**/*}')
+  s.files             = %w(README.md LICENSE) + Dir.glob('{lib/**/*}') + Dir.glob('{proto/**/*}')
   s.require_paths     = ['lib']
 
   s.add_dependency 'base64'
+  s.add_dependency 'google-protobuf', '>= 3.0'
 
   s.add_development_dependency 'benchmark'
   s.add_development_dependency 'benchmark-ips'

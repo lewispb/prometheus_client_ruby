@@ -90,9 +90,20 @@ module Prometheus
         unless name.is_a?(Symbol)
           raise ArgumentError, 'metric name must be a symbol'
         end
-        unless name.to_s =~ /\A[a-zA-Z_:][a-zA-Z0-9_:]*\Z/
-          msg = 'metric name must match /[a-zA-Z_:][a-zA-Z0-9_:]*/'
-          raise ArgumentError, msg
+
+        name_str = name.to_s
+
+        if name_str.empty? || name_str.strip.empty?
+          raise ArgumentError, 'metric name cannot be empty or whitespace-only'
+        end
+
+        unless name_str.valid_encoding?
+          raise ArgumentError, 'metric name must be valid UTF-8'
+        end
+
+        # Metric names starting with __ are reserved for internal use
+        if name_str.start_with?('__')
+          raise ArgumentError, 'metric name must not start with __'
         end
       end
 

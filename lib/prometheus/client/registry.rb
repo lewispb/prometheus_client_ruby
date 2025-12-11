@@ -6,6 +6,7 @@ require 'prometheus/client/counter'
 require 'prometheus/client/summary'
 require 'prometheus/client/gauge'
 require 'prometheus/client/histogram'
+require 'prometheus/client/native_histogram'
 
 module Prometheus
   module Client
@@ -70,6 +71,19 @@ module Prometheus
                                preset_labels: preset_labels,
                                buckets: buckets,
                                store_settings: store_settings))
+      end
+
+      def native_histogram(name, docstring:, labels: [], preset_labels: {},
+                           schema: nil, zero_threshold: nil, max_buckets: nil,
+                           store_settings: {})
+        register(NativeHistogram.new(name,
+                                     docstring: docstring,
+                                     labels: labels,
+                                     preset_labels: preset_labels,
+                                     schema: schema,
+                                     zero_threshold: zero_threshold,
+                                     max_buckets: max_buckets,
+                                     store_settings: store_settings))
       end
 
       def exist?(name)

@@ -1,0 +1,118 @@
+// Prometheus client model protobuf definitions
+// Based on https://github.com/prometheus/client_model/blob/master/io/prometheus/client/metrics.proto
+//
+// This is a simplified version containing only the types needed for native histogram exposition.
+
+syntax = "proto3";
+
+package io.prometheus.client;
+
+option ruby_package = "Io::Prometheus::Client";
+
+message LabelPair {
+  string name = 1;
+  string value = 2;
+}
+
+enum MetricType {
+  COUNTER = 0;
+  GAUGE = 1;
+  SUMMARY = 2;
+  UNTYPED = 3;
+  HISTOGRAM = 4;
+  GAUGE_HISTOGRAM = 5;
+}
+
+message Gauge {
+  double value = 1;
+}
+
+message Counter {
+  double value = 1;
+  // Exemplar exemplar = 2;
+  // google.protobuf.Timestamp created_timestamp = 3;
+}
+
+message Quantile {
+  double quantile = 1;
+  double value = 2;
+}
+
+message Summary {
+  uint64 sample_count = 1;
+  double sample_sum = 2;
+  repeated Quantile quantile = 3;
+  // google.protobuf.Timestamp created_timestamp = 4;
+}
+
+message Untyped {
+  double value = 1;
+}
+
+// BucketSpan defines a contiguous range of bucket indices
+message BucketSpan {
+  sint32 offset = 1;  // Offset relative to previous span (or absolute for first)
+  uint32 length = 2;  // Number of consecutive buckets
+}
+
+// Classic histogram bucket (for backwards compatibility)
+message Bucket {
+  uint64 cumulative_count = 1;
+  double cumulative_count_float = 4;
+  double upper_bound = 2;
+  // Exemplar exemplar = 3;
+}
+
+// Histogram supports both classic and native histogram formats
+message Histogram {
+  // Common fields
+  uint64 sample_count = 1;
+  double sample_count_float = 4;
+  double sample_sum = 2;
+
+  // Classic histogram buckets (mutually exclusive with native fields)
+  repeated Bucket bucket = 3;
+
+  // Native histogram fields
+  // Schema determines bucket boundaries: base = 2^(2^-schema), boundary(i) = base^i
+  // Valid range: -4 to +8 for standard exponential schemas
+  // Special values: -53 for custom bucket boundaries (NHCB)
+  sint32 schema = 5;
+
+  // Zero bucket configuration
+  double zero_threshold = 6;  // Values |v| <= zero_threshold go to zero bucket
+  uint64 zero_count = 7;
+  double zero_count_float = 8;
+
+  // Negative value buckets (for observations < -zero_threshold)
+  repeated BucketSpan negative_span = 9;
+  repeated sint64 negative_delta = 10;    // Delta-encoded counts (integer)
+  repeated double negative_count = 11;     // Absolute counts (float, alternative to delta)
+
+  // Positive value buckets (for observations > zero_threshold)
+  repeated BucketSpan positive_span = 12;
+  repeated sint64 positive_delta = 13;    // Delta-encoded counts (integer)
+  repeated double positive_count = 14;     // Absolute counts (float, alternative to delta)
+
+  // Exemplars and timestamps (optional)
+  // repeated Exemplar exemplars = 16;
+  // google.protobuf.Timestamp created_timestamp = 15;
+}
+
+message Metric {
+  repeated LabelPair label = 1;
+  Gauge gauge = 2;
+  Counter counter = 3;
+  Summary summary = 4;
+  Untyped untyped = 5;
+  Histogram histogram = 7;
+  int64 timestamp_ms = 6;
+}
+
+message MetricFamily {
+  string name = 1;
+  string help = 2;
+  MetricType type = 3;
+  repeated Metric metric = 4;
+  string unit = 5;
+}
